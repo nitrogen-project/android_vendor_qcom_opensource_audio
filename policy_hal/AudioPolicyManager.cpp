@@ -1427,11 +1427,10 @@ audio_io_handle_t AudioPolicyManagerCustom::getOutputForDevice(
         audio_devices_t device,
         audio_session_t session,
         audio_stream_type_t stream,
-        audio_io_handle_t originalOutput,
         const audio_config_t *config,
         audio_output_flags_t *flags)
 {
-    audio_io_handle_t output = originalOutput;
+    audio_io_handle_t output = AUDIO_IO_HANDLE_NONE;
     status_t status;
 
     if (stream < AUDIO_STREAM_MIN || stream >= AUDIO_STREAM_CNT) {
@@ -2173,7 +2172,7 @@ status_t AudioPolicyManagerCustom::startInput(audio_io_handle_t input,
     // Routing?
     mInputRoutes.incRouteActivity(session);
 
-    if (audioSession->activeCount() == 1 || mInputRoutes.hasRouteChanged(session)) {
+    if (audioSession->activeCount() == 1 || mInputRoutes.getAndClearRouteChanged(session)) {
         // indicate active capture to sound trigger service if starting capture from a mic on
         // primary HW module
         audio_devices_t device = getNewInputDevice(inputDesc);
@@ -2271,30 +2270,6 @@ status_t AudioPolicyManagerCustom::stopInput(audio_io_handle_t input,
     }
 #endif
     return status;
-}
-
-void AudioPolicyManagerCustom::closeAllInputs() {
-    bool patchRemoved = false;
-
-    for(size_t input_index = mInputs.size(); input_index > 0; input_index--) {
-        sp<AudioInputDescriptor> inputDesc = mInputs.valueAt(input_index-1);
-        ssize_t patch_index = mAudioPatches.indexOfKey(inputDesc->getPatchHandle());
-        if (patch_index >= 0) {
-            sp<AudioPatch> patchDesc = mAudioPatches.valueAt(patch_index);
-            (void) /*status_t status*/ mpClientInterface->releaseAudioPatch(patchDesc->mAfPatchHandle, 0);
-            mAudioPatches.removeItemsAt(patch_index);
-            patchRemoved = true;
-        }
-        mpClientInterface->closeInput(mInputs.keyAt(input_index-1));
-        inputDesc->close();
-    }
-    mInputs.clear();
-    SoundTrigger::setCaptureState(false);
-    nextAudioPortGeneration();
-
-    if (patchRemoved) {
-        mpClientInterface->onAudioPatchListUpdate();
-    }
 }
 
 AudioPolicyManagerCustom::AudioPolicyManagerCustom(AudioPolicyClientInterface *clientInterface)
